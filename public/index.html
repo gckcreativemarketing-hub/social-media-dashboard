@@ -136,6 +136,12 @@
           </div>
         </div>
 
+        <!-- Top Performing Content -->
+        <div class="card">
+          <div class="card-head"><div class="card-title">Top Performing Content</div><div class="card-sub">Top 3 posts by engagement in selected period — click to open on Instagram</div></div>
+          <div class="top-content" id="topContent"></div>
+        </div>
+
         <!-- Content Stock -->
         <div class="stock-card" id="stockCard">
           <div class="stock-header">
@@ -235,6 +241,33 @@
 
       <!-- ─── CONTENT ─── -->
       <div id="viewContent" class="view hidden">
+
+        <!-- Market Radar — Twitter Pulse -->
+        <div class="card radar-card">
+          <div class="radar-head">
+            <div>
+              <div class="card-title">Market Radar — Twitter Pulse</div>
+              <div class="card-sub" id="radarMeta">Kurasi harian tweet pajak, ekonomi makro &amp; finance (ID + global)</div>
+            </div>
+            <div class="radar-controls">
+              <select id="radarDate" class="radar-select" title="Pilih tanggal"></select>
+              <button class="btn-icon" id="radarRefresh" title="Refresh / kurasi sekarang">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="radar-filters">
+            <div class="radar-chips" id="radarCats"></div>
+            <div class="radar-regions">
+              <button class="radar-region active" data-region="all">All</button>
+              <button class="radar-region" data-region="ID">🇮🇩 ID</button>
+              <button class="radar-region" data-region="Global">🌐 Global</button>
+            </div>
+          </div>
+          <div class="radar-list" id="radarList"></div>
+          <div class="radar-empty hidden" id="radarEmpty">Belum ada feed tersimpan. Klik tombol refresh untuk kurasi sekarang.</div>
+        </div>
+
         <section class="kpi-strip">
           <div class="kpi" id="ctTotalPosts"><div class="kpi-label">Posts Published</div><div class="kpi-val">—</div><div class="kpi-sub">in selected period</div></div>
           <div class="kpi" id="ctReels"><div class="kpi-label">Reels</div><div class="kpi-val">—</div><div class="kpi-sub">—</div></div>

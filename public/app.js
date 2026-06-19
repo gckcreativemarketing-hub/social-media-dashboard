@@ -15,7 +15,8 @@ const CYAN  = '#32ade6';
 const PINK  = '#ff375f';
 
 // ── State ─────────────────────────────────────────────────────────────────
-let daily = [], posts = [];
+let daily = [], posts = [], topContent = [];
+let radar = { date: null, items: [], dates: [], cat: 'all', region: 'all', loaded: false, loading: false };
 let charts = {};
 let currentView = 'overview';
 
@@ -78,6 +79,7 @@ async function fetchData(from, to) {
 
     daily = (json.daily || []).sort((a, b) => a.date.localeCompare(b.date));
     posts = json.posts || [];
+    topContent = json.topContent || [];
 
     document.getElementById('pageRange').textContent = `${from} → ${to}  ·  ${daily.length} days`;
     renderCurrentView();
@@ -139,6 +141,8 @@ function renderOverview() {
   setKpi('kpiSaves',    fmt(totalSaves),    trendBadge(sum(B,'saves'), sum(A,'saves')));
   setKpi('kpiEngRate',  fmtPct(avgEngRate), 'Period average');
   setKpi('kpiPosts',    posts.length.toString(), postSub);
+
+  renderTopContent();
 
   const labels = daily.map(d => d.date.slice(5));
 
@@ -213,6 +217,51 @@ function renderOverview() {
       }
     }
   });
+}
+
+// ── Top Performing Content (Overview) ─────────────────────────────────────
+function typeLabel(t) {
+  return t === 'REELS' ? 'Reel'
+    : t === 'CAROUSEL_ALBUM' ? 'Carousel'
+    : t === 'VIDEO' ? 'Video'
+    : t === 'IMAGE' ? 'Image'
+    : (t || 'Post');
+}
+
+function renderTopContent() {
+  const box = document.getElementById('topContent');
+  if (!box) return;
+
+  if (!topContent.length) {
+    box.innerHTML = `<div class="tc-empty">No post-level insights available for this period.</div>`;
+    return;
+  }
+
+  box.innerHTML = topContent.map((p, i) => {
+    const typeCls = p.media_type === 'REELS' ? 'badge-reels' : 'badge-carousel';
+    const caption = p.caption ? escHtml(p.caption) : '<span class="tc-nocap">(no caption)</span>';
+    const cover = p.cover
+      ? `<img src="${p.cover}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.display='none'" />`
+      : '';
+    return `
+      <a class="tc-item" href="${p.permalink}" target="_blank" rel="noopener noreferrer">
+        <div class="tc-rank">${i + 1}</div>
+        <div class="tc-cover">${cover}</div>
+        <div class="tc-body">
+          <div class="tc-top">
+            <span class="badge ${typeCls}">${typeLabel(p.media_type)}</span>
+            <span class="tc-date">${p.date || '—'}</span>
+          </div>
+          <div class="tc-caption">${caption}</div>
+          <div class="tc-metrics">
+            <span class="tc-metric"><b>${fmt(p.reach)}</b> reach</span>
+            <span class="tc-metric"><b>${fmt(p.engagement)}</b> eng.</span>
+            <span class="tc-metric ${rateCls(p.engRate)}">${fmtPct(p.engRate)} rate</span>
+          </div>
+        </div>
+        <div class="tc-arrow">↗</div>
+      </a>`;
+  }).join('');
 }
 
 // ── PERFORMANCE ───────────────────────────────────────────────────────────
@@ -404,6 +453,8 @@ function renderAudience() {
 
 // ── CONTENT ───────────────────────────────────────────────────────────────
 function renderContent() {
+  renderRadar();
+
   const setKpi = (id, val, sub) => {
     const el = document.getElementById(id);
     el.querySelector('.kpi-val').textContent = val;
@@ -503,6 +554,111 @@ function renderContent() {
         <td class="${rate != null ? rateCls(rate) : ''}">${rate != null ? fmtPct(rate) : '—'}</td>
       </tr>`);
   });
+}
+
+// ── Market Radar (Twitter feed) ───────────────────────────────────────────
+function renderRadar() {
+  // Lazy-load once when the Content tab is first opened
+  if (!radar.loaded && !radar.loading) loadRadar();
+}
+
+async function loadRadar(opts = {}) {
+  if (radar.loading) return;
+  radar.loading = true;
+  const list = document.getElementById('radarList');
+  if (list && (opts.refresh || !radar.loaded)) {
+    list.innerHTML = `<div class="radar-loading">${opts.refresh ? 'Mengkurasi tweet terbaru… (bisa ~30 detik)' : 'Memuat feed…'}</div>`;
+  }
+  try {
+    const params = new URLSearchParams();
+    if (opts.date)    params.set('date', opts.date);
+    if (opts.refresh) params.set('refresh', '1');
+    const res  = await fetch('/api/twitter-feed?' + params.toString());
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+
+    radar.items  = json.items || [];
+    radar.dates  = json.dates || [];
+    radar.date   = json.date;
+    radar.loaded = true;
+
+    const meta = document.getElementById('radarMeta');
+    if (meta) {
+      meta.textContent = json.generatedAt
+        ? `${radar.items.length} tweet · update ${new Date(json.generatedAt).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}`
+        : 'Belum ada kurasi tersimpan';
+    }
+    renderRadarDates();
+    renderRadarCats();
+    renderRadarList();
+  } catch (e) {
+    if (list) list.innerHTML = `<div class="radar-loading">Error: ${escHtml(e.message)}</div>`;
+  } finally {
+    radar.loading = false;
+  }
+}
+
+function renderRadarDates() {
+  const sel = document.getElementById('radarDate');
+  if (!sel) return;
+  if (!radar.dates.length) { sel.innerHTML = '<option value="">—</option>'; return; }
+  sel.innerHTML = radar.dates.map(d => `<option value="${d}" ${d === radar.date ? 'selected' : ''}>${d}</option>`).join('');
+}
+
+function renderRadarCats() {
+  const box = document.getElementById('radarCats');
+  if (!box) return;
+  const counts = {};
+  radar.items.forEach(i => { counts[i.category] = (counts[i.category] || 0) + 1; });
+  const cats = ['all', ...Object.keys(counts).sort((a, b) => counts[b] - counts[a])];
+  box.innerHTML = cats.map(c => {
+    const label = c === 'all' ? `All (${radar.items.length})` : `${c} (${counts[c]})`;
+    return `<button class="radar-chip ${radar.cat === c ? 'active' : ''}" data-cat="${escHtml(c)}">${escHtml(label)}</button>`;
+  }).join('');
+  box.querySelectorAll('.radar-chip').forEach(b => b.addEventListener('click', () => {
+    radar.cat = b.dataset.cat;
+    renderRadarCats();
+    renderRadarList();
+  }));
+}
+
+function renderRadarList() {
+  const list  = document.getElementById('radarList');
+  const empty = document.getElementById('radarEmpty');
+  if (!list) return;
+
+  if (!radar.items.length) {
+    list.innerHTML = '';
+    if (empty) empty.classList.remove('hidden');
+    return;
+  }
+  if (empty) empty.classList.add('hidden');
+
+  let items = radar.items;
+  if (radar.cat !== 'all')    items = items.filter(i => i.category === radar.cat);
+  if (radar.region !== 'all') items = items.filter(i => i.region === radar.region);
+
+  if (!items.length) {
+    list.innerHTML = `<div class="radar-loading">Tidak ada tweet untuk filter ini.</div>`;
+    return;
+  }
+  list.innerHTML = items.map(renderRadarItem).join('');
+}
+
+function renderRadarItem(i) {
+  const regionBadge = i.region === 'ID' ? '🇮🇩 ID' : '🌐 Global';
+  const eng = `♥ ${fmt(i.likes)} · ⟲ ${fmt(i.retweets)} · 💬 ${fmt(i.replies)}`;
+  return `
+    <a class="radar-item" href="${i.url}" target="_blank" rel="noopener noreferrer">
+      <div class="radar-item-head">
+        <span class="radar-badge region">${regionBadge}</span>
+        <span class="radar-badge cat">${escHtml(i.category || 'Other')}</span>
+        <span class="radar-handle">@${escHtml(i.handle || '')}</span>
+        <span class="radar-eng">${eng}</span>
+      </div>
+      ${i.summaryId ? `<div class="radar-summary">${escHtml(i.summaryId)}</div>` : ''}
+      <div class="radar-text">${escHtml(i.text || '')}</div>
+    </a>`;
 }
 
 // ── Chart option factory ──────────────────────────────────────────────────
@@ -842,6 +998,23 @@ document.getElementById('stockAddBtn').addEventListener('click', () => {
 
 // Render stock on load (always visible in Overview)
 renderStock();
+
+// ── Market Radar controls ─────────────────────────────────────────────────
+(() => {
+  const refreshBtn = document.getElementById('radarRefresh');
+  if (refreshBtn) refreshBtn.addEventListener('click', () => {
+    refreshBtn.classList.add('spinning');
+    loadRadar({ refresh: true }).finally(() => refreshBtn.classList.remove('spinning'));
+  });
+  const dateSel = document.getElementById('radarDate');
+  if (dateSel) dateSel.addEventListener('change', () => { if (dateSel.value) loadRadar({ date: dateSel.value }); });
+  document.querySelectorAll('.radar-region').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('.radar-region').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    radar.region = b.dataset.region;
+    renderRadarList();
+  }));
+})();
 
 // ── Init ──────────────────────────────────────────────────────────────────
 const init = dateRange(90);
