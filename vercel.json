@@ -1,0 +1,6 @@
+{
+  "rewrites": [
+    { "source": "/api/instagram", "destination": "/api/instagram" },
+    { "source": "/(.*)",          "destination": "/public/$1" }
+  ]
+}
